@@ -1,0 +1,485 @@
+// The C entry points of libicuuc, one novo-lang declaration each.
+//
+// EVERY SYMBOL CARRIES THE ICU MAJOR VERSION.  ICU renames each
+// exported C function to `<name>_<major>`, so `u_strlen` is exported as
+// `u_strlen_74` and nothing named `u_strlen` exists in the library.
+// Every `symbol =` below therefore ends in `_74`, and this module
+// resolves against ICU 74 and against no other major version.
+//
+// A pointer is an `Int`: the C API hands out opaque handles for the
+// normalizer, the break iterator and the converter, and this module
+// carries each of them as the address the C library returned.  Zero is
+// the null pointer.
+//
+// A status is an out-parameter.  Almost every entry point here takes
+// the address of a `UErrorCode`, which is a four-byte signed integer.
+// `ptr.alloc_word` reserves an eight-byte slot with every byte zero,
+// which is `U_ZERO_ERROR`, and `ptr.read_word` reads the code back out
+// of the low four bytes.  The caller MUST set the slot back to zero
+// before each call: ICU returns immediately when the code it is handed
+// is already a failure.
+//
+// A string is UTF-16.  ICU's `UChar` is sixteen bits wide, and every
+// length and capacity below counts `UChar` units and not bytes.
+// `u_strFromUTF8` turns a novo-lang `Str` into one and `u_strToUTF8`
+// turns it back.
+//
+// A `const char *` return value is an address the library owns.  Read
+// it with `ptr.read_str` and do not free it.
+//
+// A C `int32_t` return arrives in 32 bits, and ICU's comparison results
+// are negative.  Bind the value to a local with `as i32` before
+// comparing it with a negative number.
+//
+// A locale is a `Str` and can never be the null pointer, which is what
+// ICU reads as "the default locale".  Pass `""` for the root locale.
+// The README's "What is not included" section says so.
+
+// Get the text for a status code.
+//
+// The answer is the address of a static string the library owns, such
+// as `"U_ZERO_ERROR"` or `"U_BUFFER_OVERFLOW_ERROR"`.  Every code has
+// a name, including the ones that are warnings.
+pub @ffi(library = "icuuc", symbol = "u_errorName_74")
+fn u_error_name(code: Int) -> Int [ffi]
+
+// Write the version of the library into a four-byte array.
+//
+// `version_array` is the address of four bytes the caller owns, and
+// ICU writes the major, minor, patch and build numbers into them in
+// that order.  `u_versionToString` turns them into text.
+pub @ffi(library = "icuuc", symbol = "u_getVersion_74")
+fn u_get_version(version_array: Int) [ffi]
+
+// Write the version of the Unicode standard the library implements.
+//
+// `version_array` is laid out as it is for `u_getVersion`.  ICU 74
+// implements Unicode 15.1.
+pub @ffi(library = "icuuc", symbol = "u_getUnicodeVersion_74")
+fn u_get_unicode_version(version_array: Int) [ffi]
+
+// Turn a four-byte version array into dotted text.
+//
+// `version_string` is the address of at least seventeen bytes, which
+// is `U_MAX_VERSION_STRING_LENGTH`, and ICU writes a null-terminated
+// string such as `"74.2.0.0"` into it.
+pub @ffi(library = "icuuc", symbol = "u_versionToString_74")
+fn u_version_to_string(version_array: Int, version_string: Int) [ffi]
+
+// Load the library's data ahead of the first call that needs it.
+//
+// `status` is the address of a status slot.  A program that never
+// calls this gets the same loading on its first property lookup; the
+// call exists so a program can find out early that the data is
+// missing.
+pub @ffi(library = "icuuc", symbol = "u_init_74")
+fn u_init(status: Int) [io, ffi]
+
+// Get the length of a null-terminated UTF-16 string, in `UChar` units.
+//
+// A character outside the basic multilingual plane is two units, so
+// this is not the number of code points.  `u_countChar32` is.
+pub @ffi(library = "icuuc", symbol = "u_strlen_74")
+fn u_strlen(s: Int) -> Int [ffi]
+
+// Count the code points in a UTF-16 string.
+//
+// `length` is the length in `UChar` units, or -1 when the string is
+// null-terminated.  A surrogate pair counts as one.
+pub @ffi(library = "icuuc", symbol = "u_countChar32_74")
+fn u_count_char32(s: Int, length: Int) -> Int [ffi]
+
+// Convert UTF-8 bytes into a UTF-16 string.
+//
+// `dest` is a buffer of `dest_capacity` `UChar` units, `p_dest_length`
+// is the address of a four-byte slot the length is written into, or 0
+// for no answer, and `src_length` is the number of bytes at `src`, or
+// -1 when they are null-terminated.  Answers `dest`.  A destination
+// that is too small leaves `U_BUFFER_OVERFLOW_ERROR` in the status and
+// the length the conversion would have needed in `p_dest_length`.
+pub @ffi(library = "icuuc", symbol = "u_strFromUTF8_74")
+fn u_str_from_utf8(dest: Int, dest_capacity: Int, p_dest_length: Int, src: Int, src_length: Int,
+                   p_error_code: Int) -> Int [ffi]
+
+// Convert a UTF-16 string into UTF-8 bytes.
+//
+// `dest` is a buffer of `dest_capacity` bytes, `p_dest_length` is the
+// address of a four-byte slot the byte count is written into, or 0 for
+// no answer, and `src_length` counts `UChar` units, or -1 when the
+// string is null-terminated.  Answers `dest`.
+pub @ffi(library = "icuuc", symbol = "u_strToUTF8_74")
+fn u_str_to_utf8(dest: Int, dest_capacity: Int, p_dest_length: Int, src: Int, src_length: Int,
+                 p_error_code: Int) -> Int [ffi]
+
+// Compare two UTF-16 strings.
+//
+// Each length counts `UChar` units, or is -1 for a null-terminated
+// string.  `code_point_order` is 1 to order surrogates where their code
+// points are and 0 to order them where their code units are, which
+// differ above U+FFFF.  Answers a negative number, zero or a positive
+// number, and the negative one needs `as i32`.
+pub @ffi(library = "icuuc", symbol = "u_strCompare_74")
+fn u_str_compare(s1: Int, length1: Int, s2: Int, length2: Int, code_point_order: Int) -> Int [ffi]
+
+// Upper-case a UTF-16 string for a locale.
+//
+// `locale` is a locale identifier such as `"tr"`, and `""` is the root
+// locale.  Answers the length the result needs in `UChar` units, which
+// may be longer than the input: upper-casing the German sharp s gives
+// two letters.
+pub @ffi(library = "icuuc", symbol = "u_strToUpper_74")
+fn u_str_to_upper(dest: Int, dest_capacity: Int, src: Int, src_length: Int, locale: Str,
+                  p_error_code: Int) -> Int [ffi]
+
+// Lower-case a UTF-16 string for a locale.
+//
+// The arguments are those of `u_strToUpper`.  The Turkish and
+// Azerbaijani locales lower-case a capital I differently from the root
+// locale, which is why the locale is an argument at all.
+pub @ffi(library = "icuuc", symbol = "u_strToLower_74")
+fn u_str_to_lower(dest: Int, dest_capacity: Int, src: Int, src_length: Int, locale: Str,
+                  p_error_code: Int) -> Int [ffi]
+
+// Case-fold a UTF-16 string.
+//
+// Case folding maps a string to a form that compares equal to every
+// other casing of the same text, and it belongs to no locale.
+// `options` is 0 for the default mapping and 1 for the special
+// Turkic mapping of the dotted and dotless i.
+pub @ffi(library = "icuuc", symbol = "u_strFoldCase_74")
+fn u_str_fold_case(dest: Int, dest_capacity: Int, src: Int, src_length: Int, options: Int,
+                   p_error_code: Int) -> Int [ffi]
+
+// Get the general category of a code point.
+//
+// The answer is the number of a Unicode general category: 1 is an
+// uppercase letter, 2 a lowercase letter, 9 a decimal digit, 12 a
+// space separator and 0 is unassigned.  Unicode Standard Annex 44
+// table 12 names them all.
+pub @ffi(library = "icuuc", symbol = "u_charType_74")
+fn u_char_type(c: Int) -> Int [ffi]
+
+// Ask whether a code point has a binary Unicode property.
+//
+// `which` is a property number: 0 is Alphabetic, 17 is Ideographic,
+// 22 is Lowercase, 30 is Uppercase and 31 is White_Space.  Answers 1
+// when the code point has the property.
+pub @ffi(library = "icuuc", symbol = "u_hasBinaryProperty_74")
+fn u_has_binary_property(c: Int, which: Int) -> Int [ffi]
+
+// Get the value of an enumerated Unicode property for a code point.
+//
+// `which` is a property number from the enumerated range: 0x1000 is
+// Bidi_Class, 0x1005 is General_Category and 0x100A is Script.
+// Answers 0 for a property this build does not know.
+pub @ffi(library = "icuuc", symbol = "u_getIntPropertyValue_74")
+fn u_get_int_property_value(c: Int, which: Int) -> Int [ffi]
+
+// Get the bidirectional category of a code point.
+//
+// The answer is a Bidi_Class number: 0 is left-to-right, 1 is
+// right-to-left, 2 is a European number and 6 is a common number
+// separator.  Unicode Standard Annex 9 defines them.
+pub @ffi(library = "icuuc", symbol = "u_charDirection_74")
+fn u_char_direction(c: Int) -> Int [ffi]
+
+// Ask whether a code point is a letter.
+//
+// Answers 1 for the general categories of letters, which is not the
+// same set as the Alphabetic property: `u_hasBinaryProperty` with
+// property 0 is that test.
+pub @ffi(library = "icuuc", symbol = "u_isalpha_74")
+fn u_isalpha(c: Int) -> Int [ffi]
+
+// Ask whether a code point is a decimal digit.
+//
+// Answers 1 for general category 9, which includes the digits of every
+// script and not only the ASCII ones.
+pub @ffi(library = "icuuc", symbol = "u_isdigit_74")
+fn u_isdigit(c: Int) -> Int [ffi]
+
+// Ask whether a code point is a space character.
+//
+// Answers 1 for the separators and for the control characters that act
+// as whitespace, and 0 for the no-break space, which is a separator
+// that does not break a line.
+pub @ffi(library = "icuuc", symbol = "u_isspace_74")
+fn u_isspace(c: Int) -> Int [ffi]
+
+// Get the simple uppercase mapping of a code point.
+//
+// Simple means one code point to one code point.  A character whose
+// uppercase form is longer than one code point answers itself, and
+// `u_strToUpper` is the call that gives the full mapping.
+pub @ffi(library = "icuuc", symbol = "u_toupper_74")
+fn u_toupper(c: Int) -> Int [ffi]
+
+// Get the simple lowercase mapping of a code point.
+pub @ffi(library = "icuuc", symbol = "u_tolower_74")
+fn u_tolower(c: Int) -> Int [ffi]
+
+// Get the simple titlecase mapping of a code point.
+//
+// It differs from the uppercase mapping for the digraphs, where the
+// titlecase form capitalises the first letter only.
+pub @ffi(library = "icuuc", symbol = "u_totitle_74")
+fn u_totitle(c: Int) -> Int [ffi]
+
+// Write the Unicode name of a code point into a buffer.
+//
+// `name_choice` is 0 for the modern name and 2 for the Unicode 1.0
+// name.  `buffer` holds `buffer_length` bytes and the name is ASCII.
+// Answers the length of the name, which is 0 for a code point that has
+// none.
+pub @ffi(library = "icuuc", symbol = "u_charName_74")
+fn u_char_name(code: Int, name_choice: Int, buffer: Int, buffer_length: Int,
+               p_error_code: Int) -> Int [ffi]
+
+// Find the code point with a Unicode name.
+//
+// `name_choice` is as it is for `u_charName`.  A name that matches
+// nothing leaves `U_ILLEGAL_CHAR_FOUND` in the status and answers
+// 0xFFFF.
+pub @ffi(library = "icuuc", symbol = "u_charFromName_74")
+fn u_char_from_name(name_choice: Int, name: Str, p_error_code: Int) -> Int [ffi]
+
+// Get the numeric value of a code point.
+//
+// The answer is the number the character stands for, so the Roman
+// numeral for fifty answers 50 and the vulgar fraction one half
+// answers 0.5.  A code point with no numeric value answers
+// -123456789.0, which is `U_NO_NUMERIC_VALUE`.
+pub @ffi(library = "icuuc", symbol = "u_getNumericValue_74")
+fn u_get_numeric_value(c: Int) -> Float [ffi]
+
+// Get the digit value of a code point in a radix.
+//
+// `radix` is between 2 and 36.  Answers the value, or -1 when the
+// character is not a digit in that radix.  The negative answer needs
+// `as i32`.
+pub @ffi(library = "icuuc", symbol = "u_digit_74")
+fn u_digit(ch: Int, radix: Int) -> Int [ffi]
+
+// Get the script a code point belongs to.
+//
+// The answer is a script number: 0 is Common, 1 is Inherited, 2 is
+// Arabic, 17 is Han and 25 is Latin.  ISO 15924 is the register the
+// numbers follow.
+pub @ffi(library = "icuuc", symbol = "uscript_getScript_74")
+fn uscript_get_script(codepoint: Int, err: Int) -> Int [ffi]
+
+// Get the long name of a script.
+//
+// The answer is the address of a static string the library owns, such
+// as `"Latin"`.  A number that is not a script answers 0.
+pub @ffi(library = "icuuc", symbol = "uscript_getName_74")
+fn uscript_get_name(script_code: Int) -> Int [ffi]
+
+// Get the four-letter ISO 15924 code of a script.
+//
+// The answer is the address of a static string the library owns, such
+// as `"Latn"`.
+pub @ffi(library = "icuuc", symbol = "uscript_getShortName_74")
+fn uscript_get_short_name(script_code: Int) -> Int [ffi]
+
+// Get the normalizer for Normalization Form C.
+//
+// Form C composes: it replaces a base letter and its combining marks
+// with the single code point that means the same thing, where one
+// exists.  The answer is a singleton the library owns and keeps for
+// the life of the process.
+pub @ffi(library = "icuuc", symbol = "unorm2_getNFCInstance_74")
+fn unorm2_get_nfc_instance(p_error_code: Int) -> Int [ffi]
+
+// Get the normalizer for Normalization Form D.
+//
+// Form D decomposes: it replaces a composed code point with the base
+// letter and the combining marks it stands for, in canonical order.
+pub @ffi(library = "icuuc", symbol = "unorm2_getNFDInstance_74")
+fn unorm2_get_nfd_instance(p_error_code: Int) -> Int [ffi]
+
+// Get the normalizer for Normalization Form KC.
+//
+// The compatibility forms also replace a character with the sequence
+// it is a formatting variant of, so the ligature fi becomes two
+// letters.  The mapping loses the distinction and cannot be undone.
+pub @ffi(library = "icuuc", symbol = "unorm2_getNFKCInstance_74")
+fn unorm2_get_nfkc_instance(p_error_code: Int) -> Int [ffi]
+
+// Get the normalizer for Normalization Form KD.
+pub @ffi(library = "icuuc", symbol = "unorm2_getNFKDInstance_74")
+fn unorm2_get_nfkd_instance(p_error_code: Int) -> Int [ffi]
+
+// Get the normalizer that applies Form KC and case folding together.
+//
+// This is the mapping Unicode Standard Annex 15 gives for comparing
+// two identifiers without regard to case or formatting variant.
+pub @ffi(library = "icuuc", symbol = "unorm2_getNFKCCasefoldInstance_74")
+fn unorm2_get_nfkc_casefold_instance(p_error_code: Int) -> Int [ffi]
+
+// Normalize a UTF-16 string.
+//
+// `length` counts `UChar` units, or is -1 for a null-terminated
+// string, and `dest` holds `capacity` units.  Answers the length the
+// result needs, which may be longer than the input.  A destination
+// that is too small leaves `U_BUFFER_OVERFLOW_ERROR` in the status and
+// answers the length anyway.
+pub @ffi(library = "icuuc", symbol = "unorm2_normalize_74")
+fn unorm2_normalize(norm2: Int, src: Int, length: Int, dest: Int, capacity: Int,
+                    p_error_code: Int) -> Int [ffi]
+
+// Ask whether a UTF-16 string is already in a normalization form.
+//
+// Answers 1 when normalizing it would change nothing.  This is the
+// cheap test a program runs before allocating a destination.
+pub @ffi(library = "icuuc", symbol = "unorm2_isNormalized_74")
+fn unorm2_is_normalized(norm2: Int, s: Int, length: Int, p_error_code: Int) -> Int [ffi]
+
+// Get the canonical combining class of a code point.
+//
+// The class decides the order marks are written in: 0 is a starter,
+// and a higher number sorts after a lower one.  Unicode Standard Annex
+// 15 section 3 defines the ordering.
+pub @ffi(library = "icuuc", symbol = "unorm2_getCombiningClass_74")
+fn unorm2_get_combining_class(norm2: Int, c: Int) -> Int [ffi]
+
+// Ask whether a normalized string can be cut before a code point.
+//
+// Answers 1 when the code point begins a new normalized segment, so a
+// program that normalizes a stream can stop there and keep the answer
+// it has.
+pub @ffi(library = "icuuc", symbol = "unorm2_hasBoundaryBefore_74")
+fn unorm2_has_boundary_before(norm2: Int, c: Int) -> Int [ffi]
+
+// Release a normalizer.
+//
+// The five instances above are SINGLETONS THE LIBRARY OWNS and must
+// not be closed: the call frees an object the library keeps for the
+// life of the process, and the next use of it faults.  Closing the
+// null address is allowed and does nothing.  The call is here for the
+// filtered normalizers a later release may add.
+pub @ffi(library = "icuuc", symbol = "unorm2_close_74")
+fn unorm2_close(norm2: Int) [ffi]
+
+// Open a break iterator over a UTF-16 string.
+//
+// `type` is 0 for characters, 1 for words, 2 for lines and 3 for
+// sentences.  `locale` is a locale identifier and `""` is the root
+// locale.  `text` and `text_length` are the string, and `text_length`
+// is -1 when it is null-terminated.  Answers the iterator, or 0 with
+// the reason in the status.
+pub @ffi(library = "icuuc", symbol = "ubrk_open_74")
+fn ubrk_open(brk_type: Int, locale: Str, text: Int, text_length: Int, status: Int) -> Int [ffi]
+
+// Release a break iterator.
+pub @ffi(library = "icuuc", symbol = "ubrk_close_74")
+fn ubrk_close(bi: Int) [ffi]
+
+// Point a break iterator at another string.
+//
+// The iterator keeps no copy, so the string must stay where it is for
+// as long as the iterator is used.  The position is reset to the
+// start.
+pub @ffi(library = "icuuc", symbol = "ubrk_setText_74")
+fn ubrk_set_text(bi: Int, text: Int, text_length: Int, status: Int) [ffi]
+
+// Move a break iterator to the first boundary.
+//
+// The first boundary is always the start of the text, so the answer is
+// 0 for every non-empty string.
+pub @ffi(library = "icuuc", symbol = "ubrk_first_74")
+fn ubrk_first(bi: Int) -> Int [ffi]
+
+// Move a break iterator to the next boundary.
+//
+// Answers the offset in `UChar` units, or -1 when there is no next
+// boundary, which is `UBRK_DONE`.  The -1 needs `as i32`.
+pub @ffi(library = "icuuc", symbol = "ubrk_next_74")
+fn ubrk_next(bi: Int) -> Int [ffi]
+
+// Get the offset a break iterator is at, without moving it.
+pub @ffi(library = "icuuc", symbol = "ubrk_current_74")
+fn ubrk_current(bi: Int) -> Int [ffi]
+
+// Move a break iterator to the last boundary.
+//
+// The last boundary is the end of the text, so the answer is the
+// length of the string.
+pub @ffi(library = "icuuc", symbol = "ubrk_last_74")
+fn ubrk_last(bi: Int) -> Int [ffi]
+
+// Move a break iterator to the previous boundary.
+//
+// Answers -1 when there is no previous boundary.
+pub @ffi(library = "icuuc", symbol = "ubrk_previous_74")
+fn ubrk_previous(bi: Int) -> Int [ffi]
+
+// Get the rule status of the boundary a break iterator is at.
+//
+// A word iterator answers 0 for a break that ends no word, 100 for a
+// number, 200 for a word of letters and 300 for one of kana.  This is
+// how a program drops the spaces out of a word walk.
+pub @ffi(library = "icuuc", symbol = "ubrk_getRuleStatus_74")
+fn ubrk_get_rule_status(bi: Int) -> Int [ffi]
+
+// Count the locales a break iterator can be opened for.
+pub @ffi(library = "icuuc", symbol = "ubrk_countAvailable_74")
+fn ubrk_count_available() -> Int [ffi]
+
+// Open a charset converter by name.
+//
+// `converter_name` is a charset name or alias such as `"UTF-8"`,
+// `"ISO-8859-1"` or `"Shift_JIS"`.  Answers the converter, or 0 with
+// the reason in the status.  ICU's own default converter, which a null
+// name selects in C, is not reachable from here.
+pub @ffi(library = "icuuc", symbol = "ucnv_open_74")
+fn ucnv_open(converter_name: Str, err: Int) -> Int [ffi]
+
+// Release a charset converter.
+pub @ffi(library = "icuuc", symbol = "ucnv_close_74")
+fn ucnv_close(converter: Int) [ffi]
+
+// Convert bytes from one charset to another in one call.
+//
+// `target` holds `target_capacity` bytes and `source_length` is the
+// number of bytes at `source`, or -1 when they are null-terminated.
+// Answers the length the result needs, which may be more than the
+// capacity; the status then holds `U_BUFFER_OVERFLOW_ERROR`.
+pub @ffi(library = "icuuc", symbol = "ucnv_convert_74")
+fn ucnv_convert(to_converter_name: Str, from_converter_name: Str, target: Int, target_capacity: Int,
+                source: Int, source_length: Int, p_error_code: Int) -> Int [ffi]
+
+// Convert bytes into a UTF-16 string with a converter.
+//
+// `dest` holds `dest_capacity` `UChar` units.  Answers the length the
+// result needs in units.
+pub @ffi(library = "icuuc", symbol = "ucnv_toUChars_74")
+fn ucnv_to_uchars(cnv: Int, dest: Int, dest_capacity: Int, src: Int, src_length: Int,
+                  p_error_code: Int) -> Int [ffi]
+
+// Convert a UTF-16 string into bytes with a converter.
+//
+// `dest` holds `dest_capacity` bytes and `src_length` counts `UChar`
+// units.  Answers the length the result needs in bytes.  A character
+// the charset cannot represent is replaced rather than refused.
+pub @ffi(library = "icuuc", symbol = "ucnv_fromUChars_74")
+fn ucnv_from_uchars(cnv: Int, dest: Int, dest_capacity: Int, src: Int, src_length: Int,
+                    p_error_code: Int) -> Int [ffi]
+
+// Count the charsets this build of the library can convert.
+pub @ffi(library = "icuuc", symbol = "ucnv_countAvailable_74")
+fn ucnv_count_available() -> Int [ffi]
+
+// Get the name of the charset at a position in the available list.
+//
+// `n` is between zero and the count `ucnv_countAvailable` answers.
+// The answer is the address of a static string the library owns.
+pub @ffi(library = "icuuc", symbol = "ucnv_getAvailableName_74")
+fn ucnv_get_available_name(n: Int) -> Int [ffi]
+
+// Get the name a converter was opened with.
+//
+// The answer is the address of a string the converter owns, and it is
+// the canonical name rather than the alias that was asked for.
+pub @ffi(library = "icuuc", symbol = "ucnv_getName_74")
+fn ucnv_get_name(converter: Int, err: Int) -> Int [ffi]

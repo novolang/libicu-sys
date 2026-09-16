@@ -1,0 +1,386 @@
+// API tests for the libicuuc bindings.
+//
+// Every test below calls into the C library, so the suite needs ICU 74
+// installed and linked.  `novo pkg build` type-checks the declarations
+// without it; `novo test` runs them and does not.
+//
+// Every test works in memory over text the suite lays out itself, so
+// the suite reads and writes nothing and needs no privileges.
+
+use std.test
+use libicu
+
+// `U_UPPERCASE_LETTER`, `U_LOWERCASE_LETTER`, `U_DECIMAL_DIGIT_NUMBER`
+// and `U_SPACE_SEPARATOR`, the general categories the suite checks.
+const CAT_UPPER: Int = 1
+const CAT_LOWER: Int = 2
+const CAT_DIGIT: Int = 9
+const CAT_SPACE: Int = 12
+
+// `UCHAR_ALPHABETIC`, `UCHAR_LOWERCASE`, `UCHAR_UPPERCASE` and
+// `UCHAR_WHITE_SPACE`, four binary properties.
+const PROP_ALPHABETIC: Int = 0
+const PROP_LOWERCASE: Int = 22
+const PROP_UPPERCASE: Int = 30
+const PROP_WHITE_SPACE: Int = 31
+
+// `UCHAR_GENERAL_CATEGORY` and `UCHAR_SCRIPT`, two enumerated
+// properties.
+const PROP_GENERAL_CATEGORY: Int = 0x1005
+const PROP_SCRIPT: Int = 0x100A
+
+// `USCRIPT_LATIN` and `USCRIPT_INHERITED`.
+const SCRIPT_LATIN: Int = 25
+const SCRIPT_INHERITED: Int = 1
+
+// `U_LEFT_TO_RIGHT`, the bidirectional category of a Latin letter.
+const DIR_LEFT_TO_RIGHT: Int = 0
+
+// `U_UNICODE_CHAR_NAME`, the modern name choice.
+const NAME_CHOICE_MODERN: Int = 0
+
+// `UBRK_WORD`, the break iterator over words, and `UBRK_WORD_LETTER`,
+// the rule status of a break that ends a word of letters.
+const BRK_WORD: Int = 1
+const WORD_LETTER: Int = 200
+
+// The code units of "cafe" followed by U+0301 COMBINING ACUTE ACCENT,
+// which is "café" in Normalization Form D.
+const C_SMALL_C: Int = 0x0063
+const C_SMALL_A: Int = 0x0061
+const C_SMALL_F: Int = 0x0066
+const C_SMALL_E: Int = 0x0065
+const C_ACUTE: Int = 0x0301
+
+// U+00E9 LATIN SMALL LETTER E WITH ACUTE, the composed form.
+const C_E_ACUTE: Int = 0x00E9
+
+// The canonical combining class of U+0301.
+const CCC_ABOVE: Int = 230
+
+// Reserve a status slot.
+//
+// A `UErrorCode` is four bytes.  `ptr.alloc_word` reserves eight with
+// every byte zero, which is `U_ZERO_ERROR`, so `ptr.read_word` reads
+// the code back with no other byte in the way.
+fn status() -> Int
+    return ptr.alloc_word()
+
+// Set a status slot back to `U_ZERO_ERROR`.
+fn clear(st: Int)
+    ptr.write_word(st, 0)
+
+// Lay out "café" in Normalization Form D as a UTF-16 string.
+//
+// `ptr.write_i32` writes four bytes, which is two code units, so
+// writing the units in order leaves each one's upper half zero and the
+// next write covers it.  The last write leaves the terminator.
+fn cafe_nfd() -> Int
+    let s = ptr.alloc(16)
+    ptr.write_i32(s, C_SMALL_C)
+    ptr.write_i32(s + 2, C_SMALL_A)
+    ptr.write_i32(s + 4, C_SMALL_F)
+    ptr.write_i32(s + 6, C_SMALL_E)
+    ptr.write_i32(s + 8, C_ACUTE)
+    return s
+
+// Turn ASCII text into a UTF-16 string of `str.len(s)` code units.
+fn utf16(s: Str) -> Int [ffi]
+    let n = str.len(s)
+    let src = ptr.alloc(n + 1)
+    ptr.write_bytes_buf(src, bytes.from_str(s))
+    let dest = ptr.alloc(n * 2 + 2)
+    let st = status()
+    let _ = libicu.u_str_from_utf8(dest, n + 1, 0, src, n, st)
+    ptr.free(st)
+    ptr.free(src)
+    return dest
+
+@test
+fn test_the_library_reports_its_versions_and_names_its_codes() [io, ffi]
+    test.case("u_getVersion, u_getUnicodeVersion, u_versionToString, u_errorName, u_init")
+    let st = status()
+    libicu.u_init(st)
+    test.assert(ptr.read_word(st) == 0)
+    // A version array is four bytes: major, minor, patch, build.
+    let v = ptr.alloc(4)
+    libicu.u_get_version(v)
+    test.assert(ptr.load_u8(v) == 74)
+    let text = ptr.alloc(24)
+    libicu.u_version_to_string(v, text)
+    test.assert(str.len(ptr.read_str(text)) > 0)
+    // ICU 74 implements Unicode 15.1.
+    libicu.u_get_unicode_version(v)
+    test.assert(ptr.load_u8(v) == 15)
+    test.assert(ptr.read_str(libicu.u_error_name(0)) == "U_ZERO_ERROR")
+    ptr.free(text)
+    ptr.free(v)
+    ptr.free(st)
+
+@test
+fn test_utf8_converts_to_utf16_and_back() [io, ffi]
+    test.case("u_strFromUTF8, u_strToUTF8, u_strlen, u_countChar32, u_strCompare")
+    let a = utf16("hello")
+    test.assert(libicu.u_strlen(a) == 5)
+    // Every code point here is one code unit, so the two counts agree.
+    test.assert(libicu.u_count_char32(a, -1) == 5)
+    let b = utf16("hellp")
+    // "hello" sorts before "hellp", and the answer is a C `int32_t`.
+    let order = libicu.u_str_compare(a, -1, b, -1, 1) as i32
+    test.assert(order < 0)
+    test.assert(libicu.u_str_compare(a, -1, a, -1, 1) == 0)
+    // Back to UTF-8, with the byte count written into a slot.
+    let st = status()
+    let out = ptr.alloc(32)
+    let len_slot = ptr.alloc_word()
+    let _ = libicu.u_str_to_utf8(out, 32, len_slot, a, 5, st)
+    test.assert(ptr.read_word(st) == 0)
+    test.assert(ptr.read_word(len_slot) == 5)
+    test.assert(ptr.read_str(out) == "hello")
+    ptr.free(len_slot)
+    ptr.free(out)
+    ptr.free(st)
+    ptr.free(b)
+    ptr.free(a)
+
+@test
+fn test_a_string_is_upper_cased_lower_cased_and_folded() [io, ffi]
+    test.case("u_strToUpper, u_strToLower, u_strFoldCase")
+    let st = status()
+    let src = utf16("Straat")
+    let dest = ptr.alloc(64)
+    // The root locale is the empty string.  A null locale, which C
+    // reads as the default locale, is not reachable from novo-lang.
+    test.assert(libicu.u_str_to_upper(dest, 32, src, 6, "", st) == 6)
+    test.assert(ptr.read_word(st) == 0)
+    let out = ptr.alloc(32)
+    let _ = libicu.u_str_to_utf8(out, 32, 0, dest, 6, st)
+    test.assert(ptr.read_str(out) == "STRAAT")
+    clear(st)
+    test.assert(libicu.u_str_to_lower(dest, 32, src, 6, "", st) == 6)
+    let _ = libicu.u_str_to_utf8(out, 32, 0, dest, 6, st)
+    test.assert(ptr.read_str(out) == "straat")
+    clear(st)
+    // Case folding belongs to no locale, and 0 is the default mapping.
+    test.assert(libicu.u_str_fold_case(dest, 32, src, 6, 0, st) == 6)
+    let _ = libicu.u_str_to_utf8(out, 32, 0, dest, 6, st)
+    test.assert(ptr.read_str(out) == "straat")
+    ptr.free(out)
+    ptr.free(dest)
+    ptr.free(src)
+    ptr.free(st)
+
+@test
+fn test_a_code_point_reports_its_category_and_its_properties() [io, ffi]
+    test.case("u_charType, u_hasBinaryProperty, u_getIntPropertyValue, u_charDirection")
+    test.assert(libicu.u_char_type(0x0041) == CAT_UPPER)
+    test.assert(libicu.u_char_type(0x0061) == CAT_LOWER)
+    test.assert(libicu.u_char_type(0x0035) == CAT_DIGIT)
+    test.assert(libicu.u_char_type(0x0020) == CAT_SPACE)
+    // A `UBool` is one byte, and the bits above it are whatever was
+    // left in the register: `as i8` is the comparison that holds.
+    test.assert(libicu.u_has_binary_property(0x0041, PROP_ALPHABETIC) as i8 == 1)
+    test.assert(libicu.u_has_binary_property(0x0041, PROP_UPPERCASE) as i8 == 1)
+    test.assert(libicu.u_has_binary_property(0x0041, PROP_LOWERCASE) as i8 == 0)
+    test.assert(libicu.u_has_binary_property(0x0020, PROP_WHITE_SPACE) as i8 == 1)
+    // The enumerated property answers the same number as `u_charType`.
+    test.assert(libicu.u_get_int_property_value(0x0041, PROP_GENERAL_CATEGORY) == CAT_UPPER)
+    test.assert(libicu.u_get_int_property_value(0x0041, PROP_SCRIPT) == SCRIPT_LATIN)
+    test.assert(libicu.u_char_direction(0x0041) == DIR_LEFT_TO_RIGHT)
+
+@test
+fn test_the_simple_case_mappings_and_the_classification_calls() [io, ffi]
+    test.case("u_isalpha, u_isdigit, u_isspace, u_toupper, u_tolower, u_totitle")
+    test.assert(libicu.u_isalpha(0x0041) as i8 == 1)
+    test.assert(libicu.u_isalpha(0x0035) as i8 == 0)
+    test.assert(libicu.u_isdigit(0x0035) as i8 == 1)
+    test.assert(libicu.u_isdigit(0x0041) as i8 == 0)
+    test.assert(libicu.u_isspace(0x0020) as i8 == 1)
+    test.assert(libicu.u_isspace(0x0041) as i8 == 0)
+    test.assert(libicu.u_toupper(0x0061) == 0x0041)
+    test.assert(libicu.u_tolower(0x0041) == 0x0061)
+    test.assert(libicu.u_totitle(0x0061) == 0x0041)
+
+@test
+fn test_a_code_point_reports_its_numeric_value_and_its_name() [io, ffi]
+    test.case("u_digit, u_getNumericValue, u_charName, u_charFromName")
+    test.assert(libicu.u_digit(0x0037, 10) == 7)
+    test.assert(libicu.u_digit(0x0061, 16) == 10)
+    // A character that is no digit in that radix answers -1, and the
+    // answer is a C `int32_t`.
+    let not_a_digit = libicu.u_digit(0x0061, 10) as i32
+    test.assert(not_a_digit < 0)
+    test.assert(libicu.u_get_numeric_value(0x0037) == 7.0)
+    let st = status()
+    let name = ptr.alloc(128)
+    let n = libicu.u_char_name(0x0041, NAME_CHOICE_MODERN, name, 128, st)
+    test.assert(ptr.read_word(st) == 0)
+    test.assert(n > 0)
+    test.assert(ptr.read_str(name) == "LATIN CAPITAL LETTER A")
+    clear(st)
+    test.assert(libicu.u_char_from_name(NAME_CHOICE_MODERN, "LATIN CAPITAL LETTER A", st) == 0x0041)
+    ptr.free(name)
+    ptr.free(st)
+
+@test
+fn test_a_code_point_reports_its_script() [io, ffi]
+    test.case("uscript_getScript, uscript_getName, uscript_getShortName")
+    let st = status()
+    test.assert(libicu.uscript_get_script(0x0041, st) == SCRIPT_LATIN)
+    test.assert(ptr.read_word(st) == 0)
+    // A combining mark takes the script of what it is written on.
+    clear(st)
+    test.assert(libicu.uscript_get_script(C_ACUTE, st) == SCRIPT_INHERITED)
+    test.assert(ptr.read_str(libicu.uscript_get_name(SCRIPT_LATIN)) == "Latin")
+    test.assert(ptr.read_str(libicu.uscript_get_short_name(SCRIPT_LATIN)) == "Latn")
+    ptr.free(st)
+
+@test
+fn test_a_decomposed_string_composes_and_a_composed_one_decomposes() [io, ffi]
+    test.case("unorm2_getNFCInstance, unorm2_getNFDInstance, unorm2_normalize, unorm2_isNormalized")
+    let st = status()
+    let nfc = libicu.unorm2_get_nfc_instance(st)
+    test.assert(nfc != 0)
+    test.assert(ptr.read_word(st) == 0)
+    clear(st)
+    let nfd = libicu.unorm2_get_nfd_instance(st)
+    test.assert(nfd != 0)
+    let src = cafe_nfd()
+    test.assert(libicu.u_strlen(src) == 5)
+    clear(st)
+    // The decomposed form is normalized for D and not for C.
+    test.assert(libicu.unorm2_is_normalized(nfd, src, 5, st) as i8 == 1)
+    clear(st)
+    test.assert(libicu.unorm2_is_normalized(nfc, src, 5, st) as i8 == 0)
+    clear(st)
+    let dest = ptr.alloc(32)
+    // Composing the five units gives four: the e and the mark join.
+    test.assert(libicu.unorm2_normalize(nfc, src, 5, dest, 16, st) == 4)
+    test.assert(ptr.read_word(st) == 0)
+    test.assert(libicu.u_strlen(dest) == 4)
+    // The fourth unit is U+00E9, read as two bytes little-endian.
+    test.assert(ptr.load_u8(dest + 6) == 0xE9)
+    test.assert(ptr.load_u8(dest + 7) == 0x00)
+    clear(st)
+    // And decomposing it again gives the five back.
+    let back = ptr.alloc(32)
+    test.assert(libicu.unorm2_normalize(nfd, dest, 4, back, 16, st) == 5)
+    test.assert(libicu.u_str_compare(back, 5, src, 5, 1) == 0)
+    ptr.free(back)
+    ptr.free(dest)
+    ptr.free(src)
+    ptr.free(st)
+
+@test
+fn test_the_compatibility_normalizers_and_the_mark_ordering() [io, ffi]
+    test.case("unorm2_getNFKCInstance, unorm2_getNFKDInstance, unorm2_getNFKCCasefoldInstance, unorm2_getCombiningClass, unorm2_hasBoundaryBefore, unorm2_close")
+    let st = status()
+    let nfkc = libicu.unorm2_get_nfkc_instance(st)
+    test.assert(nfkc != 0)
+    clear(st)
+    let nfkd = libicu.unorm2_get_nfkd_instance(st)
+    test.assert(nfkd != 0)
+    clear(st)
+    let fold = libicu.unorm2_get_nfkc_casefold_instance(st)
+    test.assert(fold != 0)
+    clear(st)
+    // U+FB01 LATIN SMALL LIGATURE FI is one character in Form C and
+    // two in Form KC.
+    let lig = ptr.alloc(8)
+    ptr.write_i32(lig, 0xFB01)
+    let dest = ptr.alloc(32)
+    test.assert(libicu.unorm2_normalize(nfkc, lig, 1, dest, 16, st) == 2)
+    clear(st)
+    test.assert(libicu.unorm2_normalize(nfkd, lig, 1, dest, 16, st) == 2)
+    clear(st)
+    // The case-folding normalizer lower-cases as well.
+    let cap = ptr.alloc(8)
+    ptr.write_i32(cap, 0x0041)
+    test.assert(libicu.unorm2_normalize(fold, cap, 1, dest, 16, st) == 1)
+    test.assert(ptr.load_u8(dest) == 0x61)
+    // A letter starts a segment; the mark that follows it does not.
+    // The combining class is an UNSIGNED byte, so `as i8` would read
+    // 230 as -26 and `% 256` is the comparison that holds.
+    test.assert(libicu.unorm2_get_combining_class(nfd_of(st), C_ACUTE) % 256 == CCC_ABOVE)
+    test.assert(libicu.unorm2_has_boundary_before(nfkc, C_SMALL_C) as i8 == 1)
+    test.assert(libicu.unorm2_has_boundary_before(nfkc, C_ACUTE) as i8 == 0)
+    // The five instances are singletons the library owns and closing
+    // one frees an object the library keeps, so the suite closes the
+    // null address instead, which is the one safe argument.
+    libicu.unorm2_close(0)
+    ptr.free(cap)
+    ptr.free(dest)
+    ptr.free(lig)
+    ptr.free(st)
+
+// Get the Form D normalizer, clearing the status slot first.
+fn nfd_of(st: Int) -> Int [ffi]
+    ptr.write_word(st, 0)
+    return libicu.unorm2_get_nfd_instance(st)
+
+@test
+fn test_a_break_iterator_walks_the_words_of_a_sentence() [io, ffi]
+    test.case("ubrk_open, ubrk_setText, ubrk_first, ubrk_next, ubrk_current, ubrk_last, ubrk_previous, ubrk_getRuleStatus, ubrk_close, ubrk_countAvailable")
+    test.assert(libicu.ubrk_count_available() > 0)
+    let st = status()
+    let text = utf16("the quick fox")
+    let bi = libicu.ubrk_open(BRK_WORD, "", text, 13, st)
+    test.assert(bi != 0)
+    test.assert(ptr.read_word(st) == 0)
+    // The first boundary is the start of the text.
+    test.assert(libicu.ubrk_first(bi) == 0)
+    // "the" ends at 3, and the break that ends it is a word of letters.
+    test.assert(libicu.ubrk_next(bi) == 3)
+    test.assert(libicu.ubrk_get_rule_status(bi) == WORD_LETTER)
+    test.assert(libicu.ubrk_current(bi) == 3)
+    // The space ends at 4 and is a break that ends no word.
+    test.assert(libicu.ubrk_next(bi) == 4)
+    test.assert(libicu.ubrk_get_rule_status(bi) == 0)
+    // The last boundary is the end of the text.
+    test.assert(libicu.ubrk_last(bi) == 13)
+    test.assert(libicu.ubrk_previous(bi) == 10)
+    clear(st)
+    // The same iterator, pointed at another string.
+    let other = utf16("one two")
+    libicu.ubrk_set_text(bi, other, 7, st)
+    test.assert(ptr.read_word(st) == 0)
+    test.assert(libicu.ubrk_first(bi) == 0)
+    test.assert(libicu.ubrk_next(bi) == 3)
+    libicu.ubrk_close(bi)
+    ptr.free(other)
+    ptr.free(text)
+    ptr.free(st)
+
+@test
+fn test_a_converter_turns_bytes_into_text_and_back() [io, ffi]
+    test.case("ucnv_open, ucnv_getName, ucnv_toUChars, ucnv_fromUChars, ucnv_convert, ucnv_countAvailable, ucnv_getAvailableName, ucnv_close")
+    test.assert(libicu.ucnv_count_available() > 0)
+    test.assert(str.len(ptr.read_str(libicu.ucnv_get_available_name(0))) > 0)
+    let st = status()
+    let cnv = libicu.ucnv_open("ISO-8859-1", st)
+    test.assert(cnv != 0)
+    test.assert(ptr.read_word(st) == 0)
+    clear(st)
+    test.assert(str.len(ptr.read_str(libicu.ucnv_get_name(cnv, st))) > 0)
+    clear(st)
+    // Three Latin-1 bytes become three UTF-16 units.
+    let src = ptr.alloc(8)
+    ptr.write_bytes_buf(src, bytes.from_str("abc"))
+    let u = ptr.alloc(32)
+    test.assert(libicu.ucnv_to_uchars(cnv, u, 16, src, 3, st) == 3)
+    test.assert(ptr.read_word(st) == 0)
+    clear(st)
+    let back = ptr.alloc(32)
+    test.assert(libicu.ucnv_from_uchars(cnv, back, 32, u, 3, st) == 3)
+    test.assert(ptr.read_str(back) == "abc")
+    clear(st)
+    // The one-shot form names both charsets and opens neither.
+    let out = ptr.alloc(32)
+    test.assert(libicu.ucnv_convert("ISO-8859-1", "UTF-8", out, 32, src, 3, st) == 3)
+    test.assert(ptr.read_str(out) == "abc")
+    libicu.ucnv_close(cnv)
+    ptr.free(out)
+    ptr.free(back)
+    ptr.free(u)
+    ptr.free(src)
+    ptr.free(st)

@@ -1,0 +1,56 @@
+[package]
+name        = "libicu-sys"
+version     = "0.1.0"
+description = "Bindings over libicuuc, the International Components for Unicode common library: the UTF-16 strings and their UTF-8 conversion, the character properties, the scripts, the normalizers, the break iterators, the charset converters and the error codes, one declaration per C entry point."
+license     = "Apache-2.0"
+
+# NOT a `0.0.x` draft.  An interface release is the shape whose every
+# `pub fn` body is a `todo()`, and every `pub fn` here is an `@ffi`
+# declaration with no body at all — `novo pkg publish` reads that as a
+# release with bodies and refuses a `0.0.x` version for it.
+stability   = "experimental"
+
+# `sys`: the layer for a package that binds one C library and decides
+# nothing of its own.  Every `pub fn` below is an `@ffi` declaration of
+# a function in libicuuc.
+layer       = "sys"
+
+category    = "bindings"
+
+# The one C library.  ICU ships as five: `libicuuc.so` holds the
+# character properties, the normalizers, the break iterators and the
+# converters; `libicui18n.so` the collation, the formatters and the
+# calendars; `libicudata.so` the tables both of them read;
+# `libicuio.so` a stdio layer and `libicutu.so` the toolchain.  A `sys`
+# package wraps one library, and this one wraps the common library.
+# `libicudata` carries data and no entry points, and the loader brings
+# it in with `libicuuc`.  `libicui18n` is named in the README under
+# "What is not included".
+wraps       = "libicuuc"
+
+# EVERY SYMBOL IN THIS PACKAGE CARRIES THE ICU MAJOR VERSION.  ICU
+# renames each exported C function to `<name>_<major>` — `u_strlen` is
+# exported as `u_strlen_74` — so a `symbol =` that leaves the suffix off
+# resolves against nothing.  This release is built for ICU 74, and a
+# different major version of ICU needs a new release of this package.
+# The README's "The rules a user needs" says so in the same words.
+tags        = ["ffi", "icu", "unicode", "normalization", "text", "bindings"]
+repository  = "https://github.com/novolang/libicu-sys"
+maintainers = ["novo-lang"]
+novo        = ">= 0.8.9"
+
+[docs.pages]
+"README.md" = "The C entry points of libicuuc, one novo-lang declaration each"
+
+[dependencies]
+# None.  A binding over one C library depends on no novo-lang package.
+
+# The link flag for the `library = "icuuc"` name every declaration in
+# `src/` carries.  `libicu-dev` installs
+# `/usr/lib/<arch>/pkgconfig/icu-uc.pc`, so pkg-config answers
+# `-licuuc -licudata` on Debian and Ubuntu, and the data library is the
+# half that has to come with it.  Without the block the default is
+# `-licuuc` alone, which does not link on a system whose common library
+# is not already joined to the data library.
+[ffi.icuuc]
+pkg_config = "icu-uc"
