@@ -9,6 +9,29 @@ with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
 The documentation and comments in plain prose; no declaration changed.
 
+### Corrected against the ICU 74 headers
+
+- `U_MAX_VERSION_STRING_LENGTH` is 20, so a buffer for
+  `u_versionToString` needs twenty bytes.
+- `u_charName` takes 0 for the modern name, 1 for the Unicode 1.0
+  name, 2 for the extended name and 3 for the name alias. A short
+  buffer still answers the full length.
+- `u_charFromName` leaves `U_INVALID_CHAR_FOUND` in the status for a
+  name it does not know, and the answer on failure is undefined.
+- `u_isspace` answers 1 for a no-break space. The call that excludes
+  them is `u_isWhitespace`, which this package does not declare.
+- `uscript_getScript` answers ICU's own `UScriptCode` number, not the
+  numeric code of ISO 15924. The four letters come from
+  `uscript_getShortName`.
+- `uscript_getName` answers the four-letter code for a script that has
+  no long name.
+- `ubrk_previous` answers `UBRK_DONE`, so it needs `as i32` like the
+  three calls already named.
+- The five `unorm2_get*Instance` normalizers are singletons the
+  library owns and must never be closed. A call that fills a buffer
+  answers the length the result needs whether or not it fitted, and
+  leaves `U_BUFFER_OVERFLOW_ERROR` in the status when it did not.
+
 ## 0.1.0 — 2026-09-16
 
 The first release: fifty-eight entry points of the libicuuc C API, one
