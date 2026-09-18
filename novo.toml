@@ -1,13 +1,12 @@
 [package]
 name        = "libicu-sys"
-version     = "0.1.0"
+version     = "0.1.1"
 description = "Bindings over libicuuc, the International Components for Unicode common library: the UTF-16 strings and their UTF-8 conversion, the character properties, the scripts, the normalizers, the break iterators, the charset converters and the error codes, one declaration per C entry point."
 license     = "Apache-2.0"
 
-# NOT a `0.0.x` draft.  An interface release is the shape whose every
-# `pub fn` body is a `todo()`, and every `pub fn` here is an `@ffi`
-# declaration with no body at all — `novo pkg publish` reads that as a
-# release with bodies and refuses a `0.0.x` version for it.
+# `experimental` because no program outside this repository has used
+# the package yet, and the tests exercise the entry points rather than
+# a consumer's use of them.
 stability   = "experimental"
 
 # `sys`: the layer for a package that binds one C library and decides
@@ -28,12 +27,15 @@ category    = "bindings"
 # "What is not included".
 wraps       = "libicuuc"
 
-# EVERY SYMBOL IN THIS PACKAGE CARRIES THE ICU MAJOR VERSION.  ICU
-# renames each exported C function to `<name>_<major>` — `u_strlen` is
-# exported as `u_strlen_74` — so a `symbol =` that leaves the suffix off
-# resolves against nothing.  This release is built for ICU 74, and a
-# different major version of ICU needs a new release of this package.
-# The README's "The rules a user needs" says so in the same words.
+# Every symbol in this package carries the ICU major version.  ICU
+# renames each exported C function to `<name>_<major>`.  The suffix is
+# `U_ICU_VERSION_SUFFIX` in `unicode/uvernum.h`, and it is `_74` in an
+# ICU 74 build.  The library exports `u_strlen_74` and exports nothing
+# called `u_strlen`, so a `symbol =` that leaves the suffix off
+# resolves against nothing.  Every declaration in `src/` therefore
+# spells the suffix out.  A different major version of ICU needs a new
+# release of this package.  The README's "The rules a user needs" says
+# so in the same words.
 tags        = ["ffi", "icu", "unicode", "normalization", "text", "bindings"]
 repository  = "https://github.com/novolang/libicu-sys"
 maintainers = ["novo-lang"]
@@ -50,7 +52,7 @@ novo        = ">= 0.8.9"
 # `/usr/lib/<arch>/pkgconfig/icu-uc.pc`, so pkg-config answers
 # `-licuuc -licudata` on Debian and Ubuntu, and the data library is the
 # half that has to come with it.  Without the block the default is
-# `-licuuc` alone, which does not link on a system whose common library
-# is not already joined to the data library.
+# `-licuuc` alone.  That does not link on a system whose common
+# library is not already joined to the data library.
 [ffi.icuuc]
 pkg_config = "icu-uc"

@@ -9,19 +9,21 @@ normalizers, the text boundary iterators and the charset converters.
 This package declares fifty-eight of that library's entry points to
 novo-lang, one declaration each.
 
-**Status: a binding, not a port.** Every function in this package is a
-declaration of a function in libicuuc. The package contains no logic of
-its own, and it does nothing without the C library installed. The
-fifty-eight entry points are the ones a program needs to read the
-Unicode character database, normalize text, find its word and sentence
-boundaries and convert it between charsets; the section "What is not
-included" says what a program still cannot do with them alone.
+Every function here is a declaration of a function in libicuuc. The
+package contains no logic of its own, and it does nothing without the C
+library installed. The fifty-eight entry points are the ones a program
+needs to read the Unicode character database, normalize text, find its
+word and sentence boundaries and convert it between charsets. The
+section "What is not included" says what a program still cannot do with
+them alone.
 
 **This release binds ICU 74 and no other major version.** ICU renames
 every exported C function to `<name>_<major>`, so the library exports
-`u_strlen_74` and exports nothing called `u_strlen`. Every declaration
-here names a `_74` symbol. Installing a different major version of ICU
-leaves the package resolving against nothing.
+`u_strlen_74` and exports nothing called `u_strlen`. The suffix is
+`U_ICU_VERSION_SUFFIX` in `unicode/uvernum.h`, and it is `_74` in an
+ICU 74 build. Every declaration here names a `_74` symbol. Installing a
+different major version of ICU leaves the package resolving against
+nothing.
 
 ## What it is
 
@@ -33,8 +35,9 @@ The **Unicode character database** records what each code point is. The
 **general category** says whether it is an uppercase letter, a decimal
 digit, a space separator or something else. A **binary property** is a
 yes-or-no fact about it, such as Alphabetic or White_Space. A **script**
-is the writing system it belongs to, named by the four letters of ISO
-15924: Latn, Cyrl, Arab, Hani.
+is the writing system it belongs to. ISO 15924 names each one with
+four letters: Latn, Cyrl, Arab, Hani. ICU numbers the scripts itself,
+and `uscript_getShortName` is the call that answers the four letters.
 
 **UTF-16** is the encoding ICU works in. A code point below U+10000 is
 one sixteen-bit unit, and one above it is a **surrogate pair** of two
@@ -47,7 +50,7 @@ followed by a combining acute accent. **Form C** composes: it prefers
 the single code point. **Form D** decomposes: it prefers the letter and
 the mark. The **compatibility forms**, KC and KD, go further and
 replace a character with the sequence it is a formatting variant of, so
-the ligature ﬁ becomes two letters; that mapping loses a distinction
+the ligature ﬁ becomes two letters. That mapping loses a distinction
 and cannot be undone. Unicode Standard Annex 15 specifies all four.
 
 A **break iterator** finds the places in a text where it may be cut:
@@ -175,13 +178,14 @@ later buffer in the same charset.
    library returns arrives as the address it returned.
 2. **Every symbol carries the ICU major version.** `symbol =` on each
    declaration ends in `_74`, because ICU renames its exported
-   functions and the library holds no symbol without the suffix. A
-   program built against this package needs ICU 74 installed.
+   functions and the library holds no symbol without the suffix. The
+   suffix is `U_ICU_VERSION_SUFFIX` in `unicode/uvernum.h`. A program
+   built against this package needs ICU 74 installed.
 3. **A status slot is four bytes the caller owns.** `ptr.alloc_word`
    reserves eight and zeroes them, which is `U_ZERO_ERROR`, and
-   `ptr.read_word` reads the code back. **Set the slot to zero before
-   each call**: a call handed a code that is already a failure returns
-   at once and does nothing.
+   `ptr.read_word` reads the code back. Set the slot to zero before
+   each call. A call handed a code that is already a failure returns at
+   once and does nothing.
 4. **A status code is a number with a sign.** Zero is success, a
    positive code is a failure, and a negative code is a warning the
    caller may ignore. `U_BUFFER_OVERFLOW_ERROR`, the code a destination
@@ -194,32 +198,41 @@ later buffer in the same charset.
    `U_BUFFER_OVERFLOW_ERROR` and the answer is the size to allocate.
 7. **An entry point that answers a C `int32_t` answers it in 32 bits.**
    Write `as i32` before comparing the answer with a negative number.
-   `u_strCompare`, `u_digit` and `ubrk_next` are the ones that need it.
+   `u_strCompare`, `u_digit`, `ubrk_next` and `ubrk_previous` are the
+   ones that need it.
 8. **An entry point that answers one byte answers it in one byte, and
-   the bits above it are not cleared.** A `UBool` — `u_isalpha`,
-   `u_hasBinaryProperty`, `unorm2_isNormalized`,
-   `unorm2_hasBoundaryBefore` — is signed: write `as i8` before
-   comparing it with 1. `unorm2_getCombiningClass` answers an
-   **unsigned** byte, where `as i8` would read 230 as -26; write
-   `% 256` instead.
+   the bits above it are not cleared.** A `UBool` is `int8_t`, so write
+   `as i8` before comparing one with 1. `u_isalpha`,
+   `u_hasBinaryProperty`, `unorm2_isNormalized` and
+   `unorm2_hasBoundaryBefore` each answer one.
+   `unorm2_getCombiningClass` answers an unsigned byte instead, where
+   `as i8` would read 230 as -26. Write `% 256` for that one.
 9. **A locale is a `Str` and can never be the null pointer.** ICU reads
    a null locale as the process default. Pass `""` for the root locale,
    which is the nearest thing this package can express.
-10. **The five normalizer instances are singletons the library owns.**
+10. **A handle this package opens is a handle the caller closes.**
+    `ubrk_open` is released by `ubrk_close` and `ucnv_open` by
+    `ucnv_close`. Neither is released when the program ends.
+11. **A `const char *` answer is memory the library owns.**
+    `u_errorName`, `uscript_getName`, `uscript_getShortName`,
+    `ucnv_getAvailableName` and `ucnv_getName` each answer such an
+    address. Read it with `ptr.read_str` and free nothing. The name a
+    converter answers lives as long as that converter.
+12. **The five normalizer instances are singletons the library owns.**
     `unorm2_close` on one of them frees an object the library keeps for
     the life of the process, and the next use of it faults. Do not
     close them.
-11. **A break iterator keeps no copy of its text.** The UTF-16 string
+13. **A break iterator keeps no copy of its text.** The UTF-16 string
     passed to `ubrk_open` or `ubrk_setText` must stay where it is for
     as long as the iterator is used.
-12. **`ubrk_next` and `ubrk_previous` answer -1 when there is no
+14. **`ubrk_next` and `ubrk_previous` answer -1 when there is no
     further boundary.** The value is `UBRK_DONE`, and it needs
     `as i32`.
-13. **A word break tells you what it ended.** `ubrk_getRuleStatus`
+15. **A word break tells you what it ended.** `ubrk_getRuleStatus`
     answers 0 for a break that ends no word, 100 for a number, 200 for
     a word of letters and 300 for one of kana. This is how a program
     drops the spaces out of a word walk.
-14. **The property numbers are numbers**, because the C header spells
+16. **The property numbers are numbers**, because the C header spells
     them as enumerations.
 
     | Constant | Number | What it is |
@@ -233,13 +246,13 @@ later buffer in the same charset.
     | `UCHAR_GENERAL_CATEGORY` | 0x1005 | the enumerated General_Category property |
     | `UCHAR_SCRIPT` | 0x100A | the enumerated Script property |
 
-15. **The general categories are numbers too.** 1 is an uppercase
+17. **The general categories are numbers too.** 1 is an uppercase
     letter, 2 a lowercase letter, 6 a non-spacing mark, 9 a decimal
     digit, 12 a space separator and 0 unassigned. Unicode Standard
     Annex 44 table 12 names them all.
-16. **A break iterator type is 0, 1, 2 or 3**: characters, words,
+18. **A break iterator type is 0, 1, 2 or 3**: characters, words,
     lines, sentences.
-17. **`u_getNumericValue` answers -123456789.0** for a code point that
+19. **`u_getNumericValue` answers -123456789.0** for a code point that
     stands for no number. The constant is `U_NO_NUMERIC_VALUE`.
 
 ## What is not included
@@ -263,10 +276,11 @@ later buffer in the same charset.
 - **The default locale and the default converter.** A null
   `const char *` selects the process default in C, and a novo-lang
   `Str` cannot be the null pointer.
-- **The sets.** `uset_open` and the `USet` family are left out of the
-  first release.
+- **The sets.** `uset_open` and the `USet` family are in `libicuuc`
+  and are not declared here. `unorm2_openFiltered` takes a `USet`, so
+  the filtered normalizers are absent with them.
 - **The data loading controls.** `u_setDataDirectory`,
-  `udata_setCommonData` and `u_cleanup` are left out; this release
+  `udata_setCommonData` and `u_cleanup` are left out. This release
   reads the data the library finds for itself.
 
 ## Related packages
@@ -279,14 +293,14 @@ one does not, and it carries the tables a program usually needs.
 
 Choose this package when the program needs ICU's own tables, its
 locale-sensitive break rules, or its several hundred charset
-converters. The full ICU surface — collation, the formatters, the
-calendars — has no novo-lang port planned at all.
+converters. The rest of ICU has no novo-lang port planned at all, which
+means the collation, the formatters and the calendars.
 
 ## Tests
 
-`tests/libicu_tests.nv` holds eleven tests written against the
-signatures. They call the C library, so `novo test` needs ICU 74
-installed and linkable:
+`tests/libicu_tests.nv` holds eleven tests over the fifty-eight entry
+points. They call the C library, so `novo test` needs ICU 74 installed
+and linkable:
 
 ```
 novo test tests/libicu_tests.nv
@@ -308,30 +322,6 @@ point in Form C and two in Form KC, that a word iterator finds the
 boundaries of a three-word sentence with the right rule statuses, and
 that a Latin-1 converter turns three bytes into three code units and
 back.
-
-**`novo test` exits 23 on this suite even when every assertion passes.**
-`ptr.read_str` copies a string the C library owns, and the default leak
-check counts that copy as an object the test leaked: the suite makes
-thirteen such copies and the report names thirteen objects. The exit
-code is the leak check's, not an assertion's; the output above it says
-how many assertions passed. Running with `--no-leak-check` exits 0.
-
-## Implementation status
-
-| Group | State |
-| --- | --- |
-| Versions and status codes | Complete. |
-| UTF-16 strings | Complete for the UTF-8 conversions and the case mappings. |
-| Character properties | Complete for the categories, the binary and enumerated properties, the simple mappings and the names. |
-| Scripts | Complete. |
-| Normalization | Complete for the five standard forms. |
-| Break iteration | Complete for the four boundary types. |
-| Charset converters | Complete for the one-shot and the held-converter forms. |
-| Collation and formatting | Absent. They are `libicui18n`, a different library. |
-| The C++ API | Absent. Its methods pass objects by value. |
-| Converter callbacks | Absent. They take C function pointers. |
-| `UText` | Absent. It is a table of C function pointers. |
-| Sets | Absent. Left out of the first release. |
 
 ## Licence
 

@@ -2,7 +2,7 @@
 //
 // Every test below calls into the C library, so the suite needs ICU 74
 // installed and linked.  `novo pkg build` type-checks the declarations
-// without it; `novo test` runs them and does not.
+// without it.  `novo test` links them and does not.
 //
 // Every test works in memory over text the suite lays out itself, so
 // the suite reads and writes nothing and needs no privileges.
@@ -177,12 +177,12 @@ fn test_a_code_point_reports_its_category_and_its_properties() [io, ffi]
     test.assert(libicu.u_char_type(0x0061) == CAT_LOWER)
     test.assert(libicu.u_char_type(0x0035) == CAT_DIGIT)
     test.assert(libicu.u_char_type(0x0020) == CAT_SPACE)
-    // A `UBool` is one byte, and the bits above it are whatever was
-    // left in the register: `as i8` is the comparison that holds.
-    test.assert(libicu.u_has_binary_property(0x0041, PROP_ALPHABETIC) as i8 == 1)
-    test.assert(libicu.u_has_binary_property(0x0041, PROP_UPPERCASE) as i8 == 1)
-    test.assert(libicu.u_has_binary_property(0x0041, PROP_LOWERCASE) as i8 == 0)
-    test.assert(libicu.u_has_binary_property(0x0020, PROP_WHITE_SPACE) as i8 == 1)
+    // A `UBool` is `int8_t`, and the bits above it are whatever was
+    // left in the register.  `as i8` is the comparison that holds.
+    test.assert((libicu.u_has_binary_property(0x0041, PROP_ALPHABETIC) as i8) == 1)
+    test.assert((libicu.u_has_binary_property(0x0041, PROP_UPPERCASE) as i8) == 1)
+    test.assert((libicu.u_has_binary_property(0x0041, PROP_LOWERCASE) as i8) == 0)
+    test.assert((libicu.u_has_binary_property(0x0020, PROP_WHITE_SPACE) as i8) == 1)
     // The enumerated property answers the same number as `u_charType`.
     test.assert(libicu.u_get_int_property_value(0x0041, PROP_GENERAL_CATEGORY) == CAT_UPPER)
     test.assert(libicu.u_get_int_property_value(0x0041, PROP_SCRIPT) == SCRIPT_LATIN)
@@ -191,12 +191,12 @@ fn test_a_code_point_reports_its_category_and_its_properties() [io, ffi]
 @test
 fn test_the_simple_case_mappings_and_the_classification_calls() [io, ffi]
     test.case("u_isalpha, u_isdigit, u_isspace, u_toupper, u_tolower, u_totitle")
-    test.assert(libicu.u_isalpha(0x0041) as i8 == 1)
-    test.assert(libicu.u_isalpha(0x0035) as i8 == 0)
-    test.assert(libicu.u_isdigit(0x0035) as i8 == 1)
-    test.assert(libicu.u_isdigit(0x0041) as i8 == 0)
-    test.assert(libicu.u_isspace(0x0020) as i8 == 1)
-    test.assert(libicu.u_isspace(0x0041) as i8 == 0)
+    test.assert((libicu.u_isalpha(0x0041) as i8) == 1)
+    test.assert((libicu.u_isalpha(0x0035) as i8) == 0)
+    test.assert((libicu.u_isdigit(0x0035) as i8) == 1)
+    test.assert((libicu.u_isdigit(0x0041) as i8) == 0)
+    test.assert((libicu.u_isspace(0x0020) as i8) == 1)
+    test.assert((libicu.u_isspace(0x0041) as i8) == 0)
     test.assert(libicu.u_toupper(0x0061) == 0x0041)
     test.assert(libicu.u_tolower(0x0041) == 0x0061)
     test.assert(libicu.u_totitle(0x0061) == 0x0041)
@@ -249,9 +249,9 @@ fn test_a_decomposed_string_composes_and_a_composed_one_decomposes() [io, ffi]
     test.assert(libicu.u_strlen(src) == 5)
     clear(st)
     // The decomposed form is normalized for D and not for C.
-    test.assert(libicu.unorm2_is_normalized(nfd, src, 5, st) as i8 == 1)
+    test.assert((libicu.unorm2_is_normalized(nfd, src, 5, st) as i8) == 1)
     clear(st)
-    test.assert(libicu.unorm2_is_normalized(nfc, src, 5, st) as i8 == 0)
+    test.assert((libicu.unorm2_is_normalized(nfc, src, 5, st) as i8) == 0)
     clear(st)
     let dest = ptr.alloc(32)
     // Composing the five units gives four: the e and the mark join.
@@ -298,12 +298,12 @@ fn test_the_compatibility_normalizers_and_the_mark_ordering() [io, ffi]
     ptr.write_i32(cap, 0x0041)
     test.assert(libicu.unorm2_normalize(fold, cap, 1, dest, 16, st) == 1)
     test.assert(ptr.load_u8(dest) == 0x61)
-    // A letter starts a segment; the mark that follows it does not.
-    // The combining class is an UNSIGNED byte, so `as i8` would read
-    // 230 as -26 and `% 256` is the comparison that holds.
+    // A letter starts a segment, and the mark that follows it does
+    // not.  The combining class is an unsigned byte, so `as i8` would
+    // read 230 as -26 and `% 256` is the comparison that holds.
     test.assert(libicu.unorm2_get_combining_class(nfd_of(st), C_ACUTE) % 256 == CCC_ABOVE)
-    test.assert(libicu.unorm2_has_boundary_before(nfkc, C_SMALL_C) as i8 == 1)
-    test.assert(libicu.unorm2_has_boundary_before(nfkc, C_ACUTE) as i8 == 0)
+    test.assert((libicu.unorm2_has_boundary_before(nfkc, C_SMALL_C) as i8) == 1)
+    test.assert((libicu.unorm2_has_boundary_before(nfkc, C_ACUTE) as i8) == 0)
     // The five instances are singletons the library owns and closing
     // one frees an object the library keeps, so the suite closes the
     // null address instead, which is the one safe argument.

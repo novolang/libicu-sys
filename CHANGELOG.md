@@ -5,6 +5,10 @@ is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 package follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with the pre-1.0 rule that a breaking change bumps the MINOR number.
 
+## 0.1.1 — 2026-09-18
+
+The documentation and comments in plain prose; no declaration changed.
+
 ## 0.1.0 — 2026-09-16
 
 The first release: fifty-eight entry points of the libicuuc C API, one
@@ -35,29 +39,22 @@ The first release: fifty-eight entry points of the libicuuc C API, one
     `ucnv_convert`, `ucnv_toUChars`, `ucnv_fromUChars`,
     `ucnv_getName`, `ucnv_countAvailable` and
     `ucnv_getAvailableName`.
-- `tests/libicu_tests.nv` — eleven tests over the signatures. They
-  call the C library, so they need ICU 74 installed. Every test works
-  in memory over text the suite lays out itself, so the suite reads
-  and writes nothing and needs no privileges.
+- `tests/libicu_tests.nv` — eleven tests over the fifty-eight entry
+  points. They call the C library, so they need ICU 74 installed.
+  Every test works in memory over text the suite lays out itself, so
+  the suite reads and writes nothing and needs no privileges.
 
 ### Every symbol carries the ICU major version
 
-ICU renames each exported C function to `<name>_<major>`. The library
-exports `u_strlen_74` and exports nothing called `u_strlen`, so a
-`symbol =` that leaves the suffix off resolves against nothing. Every
+ICU renames each exported C function to `<name>_<major>`. The suffix is
+`U_ICU_VERSION_SUFFIX` in `unicode/uvernum.h`. The library exports
+`u_strlen_74` and exports nothing called `u_strlen`, so a `symbol =`
+that leaves the suffix off resolves against nothing. Every
 declaration in this release therefore names a `_74` symbol, and this
 package is a binding over ICU 74. A different major version of ICU
 needs a new release of this package. The alternative, an ICU built
 with `--disable-renaming`, is not what Debian, Ubuntu, Homebrew or
 Fedora ship.
-
-### Not a `0.0.x` interface release
-
-An interface release is the shape whose every `pub fn` body is a
-`todo()`. Every `pub fn` here is an `@ffi` declaration with no body, so
-`novo pkg publish` reads the package as a release with bodies and
-refuses a `0.0.x` version for it. The first release of a bindings
-package is therefore `0.1.0`.
 
 ### Named as missing
 
@@ -96,10 +93,11 @@ root locale and a charset name for the converter, and the default is
 not reachable.
 
 **The sets.** `uset_open` and the `USet` family are in `libicuuc` and
-are left out of the first release.
+are not declared. `unorm2_openFiltered` takes a `USet`, so the filtered
+normalizers are absent with them.
 
 ### Unverified in one respect
 
-The suite passes against the ICU 74 installed on the staging machine.
-Nothing in this release has been run against another major version,
-and by construction nothing in it can be.
+The suite passes against the ICU 74 installed on the machine that
+built this release. Nothing in it has been run against another major
+version, and by construction nothing in it can be.
